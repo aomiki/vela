@@ -1,6 +1,5 @@
 #include "flight_algorithm.h"
 #include "system_definitions.h"
-#include "status_encoder.h"
 #include "communication.h"
 #include "barometer.h"
 #include "accelerometer.h"
@@ -14,113 +13,169 @@
 
 #define SEA_LEVEL_PRESSURE 101325.0f // Стандартное давление на уровне моря (Па)
 #define GRAVITY 9.81f // Ускорение свободного падения (м/с²)
-#define GAS_CONSTANT 287.0f // Удельная газовая постоянная для воздуха (Дж/(кг·K))
+#define GAS_CONSTANT 287.05f // Удельная газовая постоянная для воздуха (Дж/(кг·K))
 #define LAPSE_RATE 0.0065f // Градиент температуры (K/m)
 
 // float start_height = 0.0f;
 uint32_t previousValue = 0;
 const uint32_t threshold = 200;  // Порог изменения (нужно подбирать)
 
-static uint8_t sensors_status = 0;
+static Peripheral enabled_peripheral = 0;
 
 static SystemState curr_sys_state = SYS_STATE_NONE;
+static float start_altitude = 0;
 
 SystemState get_sys_state()
 {
 	return curr_sys_state;
 }
 
-void read_sensors()
+void change_enabled_periph_bit(bool is_enabled, Peripheral periph_bit)
 {
-	Message msg = { .sys_area = SYS_AREA_READ_SENSORS, .sys_state = curr_sys_state, .priority = PRIORITY_HIGH };
-	msg.text = malloc(256);
+	if (is_enabled)
+	{
+		enabled_peripheral |= periph_bit;
+	}
+	else
+	{
+		enabled_peripheral &= !periph_bit;
+	}
+}
 
-	msg.priority = PRIORITY_DEBUG;
-	sprintf(msg.text, "[begin reading sensors]_____________\n\r");
-	log_message(&msg);
+void switch_read_sensors_ground()
+{
+	//Reduce frequence of telemetry polling
+	HAL_TIM_Base_Stop_IT(&SENSORS_READ_TIM_HANDLE);
+	
+	__HAL_TIM_SET_PRESCALER(&SENSORS_READ_TIM_HANDLE, 0);
+	HAL_TIM_GenerateEvent(&SENSORS_READ_TIM_HANDLE, TIM_EVENTSOURCE_UPDATE); // so the new prescaler is loaded
+	__HAL_TIM_CLEAR_FLAG(&SENSORS_READ_TIM_HANDLE, TIM_FLAG_UPDATE); // so it doesn't run right away
+
+	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 2160000000);
+
+	HAL_TIM_Base_Start_IT(&SENSORS_READ_TIM_HANDLE);
+}
+
+void switch_read_sensors_standby()
+{
+	//Reduce frequence of telemetry polling
+	HAL_TIM_Base_Stop_IT(&SENSORS_READ_TIM_HANDLE);
+
+	__HAL_TIM_SET_PRESCALER(&SENSORS_READ_TIM_HANDLE, 0);
+	HAL_TIM_GenerateEvent(&SENSORS_READ_TIM_HANDLE, TIM_EVENTSOURCE_UPDATE); // so the new prescaler is loaded
+	__HAL_TIM_CLEAR_FLAG(&SENSORS_READ_TIM_HANDLE, TIM_FLAG_UPDATE); // so it doesn't run right away
+
+	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 720000000);
+
+	HAL_TIM_Base_Start_IT(&SENSORS_READ_TIM_HANDLE);
+}
+
+void switch_read_sensors_flight()
+{
+	//Reduce frequence of telemetry polling
+	HAL_TIM_Base_Stop_IT(&SENSORS_READ_TIM_HANDLE);
+
+	__HAL_TIM_SET_PRESCALER(&SENSORS_READ_TIM_HANDLE, 0);
+	HAL_TIM_GenerateEvent(&SENSORS_READ_TIM_HANDLE, TIM_EVENTSOURCE_UPDATE); // so the new prescaler is loaded
+	__HAL_TIM_CLEAR_FLAG(&SENSORS_READ_TIM_HANDLE, TIM_FLAG_UPDATE); // so it doesn't run right away
+
+	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 72000000);
+
+	HAL_TIM_Base_Start_IT(&SENSORS_READ_TIM_HANDLE);
+}
+
+void switch_apogy_tim_descent()
+{
+	HAL_TIM_Base_Stop_IT(&APOGY_TIM_HANDLE);
+
+	__HAL_TIM_SET_PRESCALER(&APOGY_TIM_HANDLE, 0);
+	HAL_TIM_GenerateEvent(&APOGY_TIM_HANDLE, TIM_EVENTSOURCE_UPDATE); // so the new prescaler is loaded
+	__HAL_TIM_CLEAR_FLAG(&APOGY_TIM_HANDLE, TIM_FLAG_UPDATE); // so it doesn't run right away
+
+	__HAL_TIM_SET_AUTORELOAD(&APOGY_TIM_HANDLE, 1584000000);
+
+	HAL_TIM_Base_Start_IT(&APOGY_TIM_HANDLE);
+}
+
+void update_enabled_peripheral()
+{
+	change_enabled_periph_bit(sd_card_is_enabled(), PERIPH_SD);
+	change_enabled_periph_bit(radio_is_enabled(), PERIPH_RADIO);
+	change_enabled_periph_bit(HAL_GPIO_ReadPin(JUMPER_PORT, JUMPER_PIN), PERIPH_JUMPER);
+	change_enabled_periph_bit(check_acc_identity(), PERIPH_ACC);
+	change_enabled_periph_bit(check_barometer_identity(), PERIPH_BAROM);
+}
+
+float get_altitude(float pressure, float temperature)
+{	
+	if(pressure <= 0 || pressure > SEA_LEVEL_PRESSURE * 1.5f) {
+		return -9999.0f;  // Некорректное давление
+	}
+
+	float temp_kelvin = temperature + 273.15f;
+
+	float height = (temp_kelvin / LAPSE_RATE) * (
+		1.0f - powf(
+			pressure / SEA_LEVEL_PRESSURE, 
+			(GAS_CONSTANT * LAPSE_RATE) / GRAVITY
+		)
+	);
+
+	return height;
+}
+
+void read_telemetry(Telemetry* tel)
+{
+	//BAROMETER
+	if (enabled_peripheral & PERIPH_BAROM)
+	{
+		tel->temp = ((float)read_temp()) / 100;
+		tel->pressure = ((float)read_pressure()) / 256;
+		tel->altitude = get_altitude(tel->pressure, tel->temp) - start_altitude;
+	}
+
+	//ACCELEROMETER
+	if (enabled_peripheral & PERIPH_ACC)
+	{
+		double acc_vals[3];
+		read_acceleration_xyz(acc_vals);
+
+		tel->acc_x = acc_vals[0];
+		tel->acc_y = acc_vals[1];
+		tel->acc_z = acc_vals[2];
+	}
+}
+
+void landing()
+{
+	curr_sys_state = SYS_STATE_GROUND;
 
 	Telemetry tel;
 	set_default_telemetry(&tel);
 	tel.sys_area = SYS_AREA_READ_SENSORS;
+	tel.sys_status = enabled_peripheral;
 	tel.sys_state = get_sys_state();
-
-	//BAROMETER
-	if (sensors_status & SENSOR_BAROM)
-	{
-		msg.priority = PRIORITY_DEBUG;
-		sprintf(msg.text, "[reading barometer]_____\n\r");
-		log_message(&msg);
-
-		float actual_temp = ((float)read_temp()) / 100;
-		tel.temp = actual_temp;
-
-		msg.priority = PRIORITY_HIGH;
-		sprintf(msg.text, "Temperature: %.2f Celsius\n\r", actual_temp);
-		log_message(&msg);
-
-		float actual_pressure = ((float)read_pressure()) / 256;
-		
-		tel.pressure = actual_pressure;
-
-		sprintf(msg.text, "Pressure: %.4f Pa\n\r", actual_pressure);
-		log_message(&msg);
-
-		float actual_height = get_height()/* - start_height*/;
-
-		sprintf(msg.text, "Height: %.4f m\n\r", ((float)actual_height));
-		log_message(&msg);
-	}
-	else
-	{
-		msg.priority = PRIORITY_HIGH;
-		sprintf(msg.text, "barometer disabled!\n\r");
-		log_message(&msg);
-	}
-
-	//ACCELEROMETER
-	if (sensors_status & SENSOR_ACC)
-	{
-		msg.priority = PRIORITY_DEBUG;
-		sprintf(msg.text, "[reading accelerometer]_____\n\r");
-		log_message(&msg);
-
-		double acc_vals[3];
-		read_acceleration_xyz(acc_vals);
-
-		tel.acc_x = acc_vals[0];
-		tel.acc_y = acc_vals[1];
-		tel.acc_z = acc_vals[2];
-
-		msg.priority = PRIORITY_HIGH;
-		sprintf(msg.text, "Acceleration: (%0.4f, %0.4f, %0.4f) \n\r", acc_vals[0], acc_vals[1], acc_vals[2]);
-		log_message(&msg);
-	}
-	else
-	{
-		msg.priority = PRIORITY_HIGH;
-		sprintf(msg.text, "accelerometer disabled!!\n\r");
-		log_message(&msg);
-	}
-
 	log_telemetry(&tel);
 
-	msg.priority = PRIORITY_DEBUG;
-	sprintf(msg.text, "[end reading sensors]_____________\n\r");
-	log_message(&msg);
+	//Stop apogy timer
+	HAL_TIM_Base_Stop_IT(&APOGY_TIM_HANDLE);
 
-/*
-//Servo stuff
-		if (pwm_switch)
-		{
-			servo_turn_min();
-			pwm_switch = 0;
-		}
-		else
-		{
-			servo_turn_max();
-			pwm_switch = 1;
-		}
-*/
+	switch_read_sensors_ground();
+}
+
+void read_sensors()
+{
+	Telemetry tel;
+	set_default_telemetry(&tel);
+	tel.sys_area = SYS_AREA_READ_SENSORS;
+	tel.sys_status = enabled_peripheral;
+	tel.sys_state = get_sys_state();
+
+	update_enabled_peripheral(); //maybe some peripheral died / came back from the dead?
+
+	read_telemetry(&tel);
+
+	log_telemetry(&tel);
 }
 
 bool check_rescue() {
@@ -143,7 +198,7 @@ bool check_rescue() {
 }
 
 bool check_apogy() {
-	// Проверяем высоту (get_height())
+	// Проверяем высоту (get_altitude())
 	
 
 	// Проверяем акселерометр
@@ -159,7 +214,7 @@ void open_rescue() {
 }
 
 bool check_landing() {
-	// Проверяем высоту (get_height())
+	// Проверяем высоту (get_altitude())
 
 
 	// Проверяем акселерометр
@@ -168,34 +223,11 @@ bool check_landing() {
 	return 0;
 }
 
-// void get_start_height() {
-// 	if (sensors_status & SENSOR_BAROM) {
-// 		start_height = get_height();
-// 	}
-// }
-
-float get_height()
-{
-	float pressure = (float)read_pressure() / 256.0f;
-	float temperature = (float)read_temp() / 100.0f;
-	
-	if(pressure <= 0 || pressure > SEA_LEVEL_PRESSURE * 1.5f) {
-		return -9999.0f;  // Некорректное давление
-	}
-	
-	float temp_kelvin = temperature + 273.15f;
-	
-	float height = (temp_kelvin / LAPSE_RATE) * 
-				  (1.0f - powf(pressure / SEA_LEVEL_PRESSURE, 
-				  (GAS_CONSTANT * LAPSE_RATE) / GRAVITY));
-	
-	return height;
-}
-
 void apogy()
 {
 	//9.96 seconds until apogy
 	curr_sys_state = SYS_STATE_APOGY;
+
 	HAL_TIM_Base_Stop_IT(&APOGY_TIM_HANDLE);
 
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
@@ -250,52 +282,69 @@ void apogy()
 
 	free(msg.text);
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
+
+	Telemetry tel;
+	set_default_telemetry(&tel);
+	tel.sys_state = get_sys_state();
+	tel.sys_status = enabled_peripheral;
+	tel.sys_area = SYS_AREA_MAIN_ALGO;
+
+	log_telemetry(&tel);
+
+	curr_sys_state = SYS_STATE_DESCENT;
+
+	switch_apogy_tim_descent();
 }
 
 void start_flight()
 {
 	curr_sys_state = SYS_STATE_LIFTOFF;
+
+	switch_read_sensors_flight();
+
+	/*
+	//start reading sensors
+	__HAL_TIM_SET_COUNTER(&SENSORS_READ_TIM_HANDLE, 0);
+	__HAL_TIM_CLEAR_FLAG(&SENSORS_READ_TIM_HANDLE, TIM_FLAG_UPDATE);
+	HAL_TIM_Base_Start_IT(&SENSORS_READ_TIM_HANDLE);
+	*/
+
+	//count down ot apogy
+	__HAL_TIM_SET_COUNTER(&APOGY_TIM_HANDLE, 0);
+	__HAL_TIM_CLEAR_FLAG(&APOGY_TIM_HANDLE, TIM_FLAG_UPDATE);
+
+	HAL_TIM_Base_Start_IT(&APOGY_TIM_HANDLE);
+
 	send_status(0x0);
 	Telemetry tel;
 	set_default_telemetry(&tel);
 	tel.sys_state = get_sys_state();
+	tel.sys_status = enabled_peripheral;
 	tel.sys_area = SYS_AREA_MAIN_ALGO;
 
 	log_telemetry(&tel);
 	Message msg = { .text = "🚀 Поплыли к звездам! 🚀 \n\n\n\r\0", .sys_area = SYS_AREA_MAIN_ALGO, .sys_state = curr_sys_state, .priority = PRIORITY_HIGH };
 	log_message(&msg);
 
-	//start reading sensors
-	__HAL_TIM_SET_COUNTER(&SENSORS_READ_TIM_HANDLE, 0);
-	__HAL_TIM_CLEAR_FLAG(&SENSORS_READ_TIM_HANDLE, TIM_FLAG_UPDATE);
-	HAL_TIM_Base_Start_IT(&SENSORS_READ_TIM_HANDLE);
-
-	//count down ot apogy
-	__HAL_TIM_SET_COUNTER(&APOGY_TIM_HANDLE, 0);
-	__HAL_TIM_CLEAR_FLAG(&APOGY_TIM_HANDLE, TIM_FLAG_UPDATE);
-	HAL_TIM_Base_Start_IT(&APOGY_TIM_HANDLE);
+	curr_sys_state = SYS_STATE_ASCENT;
 }
 
 void initialize_system()
 {
 	curr_sys_state = SYS_STATE_INIT;
 
-	Telemetry tel;
-	set_default_telemetry(&tel);
-	tel.sys_state = get_sys_state();
-	tel.sys_area = SYS_STATE_INIT;
-
-	// Крутим вентилятор
+	// Start fan
 	HAL_GPIO_WritePin(vent_GPIO_Port, vent_Pin, GPIO_PIN_SET);
-	HAL_Delay(1000);
-	HAL_GPIO_WritePin(vent_GPIO_Port, vent_Pin, GPIO_PIN_RESET);
 
 	Message msg = { .sys_area = SYS_AREA_INIT, .sys_state = SYS_STATE_INIT, .priority = PRIORITY_HIGH };
 	msg.text = malloc(256);
-	uint8_t status = 0x0;
 
 	sprintf(msg.text, "_____________ [begin system init] \n\r");
 	log_message(&msg);
+
+	enabled_peripheral = 0;
+
+	HAL_Delay(1000); //Let everything power on
 
 	//0. Radio
 	msg.priority = PRIORITY_HIGH;
@@ -303,9 +352,8 @@ void initialize_system()
 	sprintf(msg.text, "[init: radio]_____\n\r");
 	log_message(&msg);
 
-	HAL_Delay(1000);
 	radio_init();
-	status_radio_responds(&status);
+	enabled_peripheral |= PERIPH_RADIO;
 
 	//1. SD CARD.
 	msg.priority = PRIORITY_LOW;
@@ -355,7 +403,7 @@ void initialize_system()
 		}
 
 		_sd_card_set_enabled();
-		status_sd_mounts(&status);
+		enabled_peripheral |= PERIPH_SD;
 	}
 	else
 	{
@@ -377,9 +425,7 @@ void initialize_system()
 		log_message(&msg);
 
 		acc_power_on();
-		sensors_status |= SENSOR_ACC;
-
-		status_acc_responds(&status);
+		enabled_peripheral |= PERIPH_ACC;
 	}
 	else
 	{
@@ -400,11 +446,9 @@ void initialize_system()
 		sprintf(msg.text, "barometer responds correctly, powering on...\n\r");
 		log_message(&msg);
 
-		sensors_status |= SENSOR_BAROM;
-
 		barometer_power_on();
 
-		status_barometer_responds(&status);
+		enabled_peripheral |= PERIPH_BAROM;
 	}
 	else
 	{
@@ -414,13 +458,32 @@ void initialize_system()
 	}
 
 	//4. SERVO
-	HAL_TIM_PWM_Start(&SERVO_TIM_HANDLE, SERVO_TIM_PWM_CHANNEL);
+	if(HAL_TIM_PWM_Start(&SERVO_TIM_HANDLE, SERVO_TIM_PWM_CHANNEL) == HAL_OK)
+	{
+		enabled_peripheral |= PERIPH_SERVO;
+		//servo_turn_min();
+	}
 
-	status_servo_responds(&status);
+	//5. JUMPER
+	if (HAL_GPIO_ReadPin(JUMPER_PORT, JUMPER_PIN))
+	{
+		enabled_peripheral |= PERIPH_JUMPER;
+	}
 
-	//servo_turn_min();
+	send_status(enabled_peripheral);
 
-	send_status(status);
+	HAL_Delay(100); // Let everything initialize properly
+
+	//Do first read of telemetry, set initial values, talk to outside.
+	Telemetry tel;
+	set_default_telemetry(&tel);
+	tel.sys_status = enabled_peripheral;
+	tel.sys_state = get_sys_state();
+	tel.sys_area = SYS_STATE_INIT;
+
+	read_telemetry(&tel);
+
+	start_altitude = tel.altitude;
 
 	log_telemetry(&tel);
 
@@ -430,4 +493,8 @@ void initialize_system()
 	log_message(&msg);
 
 	free(msg.text);
+
+	curr_sys_state = SYS_STATE_STANDBY;
+
+	switch_read_sensors_standby();
 }

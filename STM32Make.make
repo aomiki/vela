@@ -117,8 +117,10 @@ Middlewares/Third_Party/FatFs/src/ff.c \
 Middlewares/Third_Party/FatFs/src/ff_gen_drv.c \
 Middlewares/Third_Party/FatFs/src/option/syscall.c \
 modules/src/communication.c \
+modules/src/communication_types.c \
 modules/src/sensors/accelerometer.c \
 modules/src/sensors/barometer.c \
+modules/src/sensors/gnss.c \
 modules/src/sensors/radio.c \
 modules/src/sensors/sd_card.c \
 modules/src/sensors/servo.c \

@@ -33,9 +33,9 @@
 
 #define RADIO_UART_HANDLE huart1
 
-//______________________________USB UART
+//______________________________GPS
 
-#define USB_UART_HANDLE huart1
+#define GPS_UART_HANDLE huart2
 
 //_____________________________LED
 #define LED1_PORT GPIOB

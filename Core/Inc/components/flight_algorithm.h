@@ -2,11 +2,6 @@
 #include "system_definitions.h"
 #include "system_types.h"
 
-typedef enum {
-    SENSOR_BAROM = 1,
-    SENSOR_ACC = 1 << 1
-} enabled_sensors;
-
 /// @brief (0) Main algorithm for system init
 void initialize_system();
 
@@ -15,6 +10,9 @@ void start_flight();
 
 /// @brief (2) Main algorithm for apogy
 void apogy();
+
+/// @brief (3) Main algorithm for landing
+void landing();
 
 void read_sensors();
 
@@ -30,7 +28,7 @@ bool check_apogy();
 // Вернёт 1, если приземление
 bool check_landing();
 // Возвращает текущую высоту от уровня моря
-float get_height();
+float get_altitude(float pressure, float temperature);
 
 SystemState get_sys_state();
 

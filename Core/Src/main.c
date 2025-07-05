@@ -178,6 +178,13 @@ int main(void)
       do_read_sensors = false;
     }
 
+    if (is_landing)
+    {
+      landing();
+      is_landing = false;
+    }
+    
+
 /*
     // Таймер до приземления
     while (HAL_GetTick() - start_time < time_to_landing) {
@@ -317,7 +324,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
   if (htim->Instance == APOGY_TIM_DEF)
   {
-    is_apogy = true;
+    if (get_sys_state() == SYS_STATE_DESCENT)
+    {
+      is_landing = true;
+    }
+    else
+    {
+      is_apogy = true;
+    }
   }
 }
 

@@ -14,6 +14,8 @@ void apogy();
 /// @brief (3) Main algorithm for landing
 void landing();
 
+void buzz();
+
 void read_sensors();
 
 /// @brief Open rescue system

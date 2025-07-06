@@ -25,7 +25,6 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
-#include "gps.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -35,6 +34,7 @@
 #include "option/unicode.c"
 #include "communication.h"
 #include "flight_algorithm.h"
+#include "gps.h"
 
 /* USER CODE END Includes */
 
@@ -91,6 +91,7 @@ bool do_read_sensors = false;
 bool do_start_flight = false;
 bool is_apogy = false;
 bool is_landing = false;
+bool is_buzzer = false;
 bool do_read_gps = false;
 // const uint32_t start_height = 0;
 
@@ -134,6 +135,7 @@ int main(void)
   MX_TIM3_Init();
   MX_ADC1_Init();
   MX_USART1_UART_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   
   Message msg = { .text = "⛵ Shellow from SSAU & Vela! ⛵\n\r\0", .sys_state = SYS_STATE_INIT, .sys_area = SYS_AREA_INIT, .priority = PRIORITY_HIGH };
@@ -184,6 +186,12 @@ int main(void)
     {
       landing();
       is_landing = false;
+    }
+
+    if (is_buzzer)
+    {
+      buzz();
+      is_buzzer = false;
     }
 
     if (do_read_gps)
@@ -343,6 +351,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     if (get_sys_state() == SYS_STATE_DESCENT)
     {
       is_landing = true;
+    }
+    else if (get_sys_state() == SYS_STATE_GROUND)
+    {
+      is_buzzer = true;
     }
     else
     {

@@ -38,6 +38,10 @@
 #define GPS_UART_HANDLE huart2
 #define GPS_UART_DEF USART2
 
+//______________________________BUZZER
+#define BUZZER_TIM_HANDLE htim4
+#define BUZZER_TIM_CHANNEL TIM_CHANNEL_3
+
 //_____________________________LED
 #define LED1_PORT GPIOB
 #define LED1_PIN GPIO_PIN_14

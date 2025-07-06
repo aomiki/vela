@@ -9,6 +9,7 @@
 #include "servo.h"
 #include "adc.h"
 #include "gps.h"
+#include "buzzer.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -98,6 +99,19 @@ void switch_apogy_tim_descent()
 	HAL_TIM_Base_Start_IT(&APOGY_TIM_HANDLE);
 }
 
+void switch_apogy_tim_ground_buzzer()
+{
+	HAL_TIM_Base_Stop_IT(&APOGY_TIM_HANDLE);
+
+	__HAL_TIM_SET_PRESCALER(&APOGY_TIM_HANDLE, 0);
+	HAL_TIM_GenerateEvent(&APOGY_TIM_HANDLE, TIM_EVENTSOURCE_UPDATE); // so the new prescaler is loaded
+	__HAL_TIM_CLEAR_FLAG(&APOGY_TIM_HANDLE, TIM_FLAG_UPDATE); // so it doesn't run right away
+
+	__HAL_TIM_SET_AUTORELOAD(&APOGY_TIM_HANDLE, 720000000);
+
+	HAL_TIM_Base_Start_IT(&APOGY_TIM_HANDLE);
+}
+
 void update_enabled_peripheral()
 {
 	change_enabled_periph_bit(sd_card_is_enabled(), PERIPH_SD);
@@ -163,10 +177,15 @@ void landing()
 	tel.sys_state = get_sys_state();
 	log_telemetry(&tel);
 
-	//Stop apogy timer
-	HAL_TIM_Base_Stop_IT(&APOGY_TIM_HANDLE);
-
+	switch_apogy_tim_ground_buzzer();
 	switch_read_sensors_ground();
+}
+
+void buzz()
+{
+	buzzer_start();
+	HAL_Delay(5000);
+	buzzer_stop();
 }
 
 void read_sensors()
@@ -483,6 +502,8 @@ void initialize_system()
 	}
 
 	send_status(enabled_peripheral);
+
+	buzzer_set_freq(2000);
 
 	HAL_Delay(100); // Let everything initialize properly
 

@@ -120,6 +120,7 @@ modules/src/communication.c \
 modules/src/communication_types.c \
 modules/src/sensors/accelerometer.c \
 modules/src/sensors/barometer.c \
+modules/src/sensors/buzzer.c \
 modules/src/sensors/gnss.c \
 modules/src/sensors/radio.c \
 modules/src/sensors/sd_card.c \

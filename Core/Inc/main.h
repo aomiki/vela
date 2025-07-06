@@ -94,6 +94,8 @@ void Error_Handler(void);
 #define radio_m0_GPIO_Port GPIOB
 #define led_gps_Pin GPIO_PIN_4
 #define led_gps_GPIO_Port GPIOB
+#define buzzer_tim4_ch3_Pin GPIO_PIN_8
+#define buzzer_tim4_ch3_GPIO_Port GPIOB
 #define beacon_aux_Pin GPIO_PIN_9
 #define beacon_aux_GPIO_Port GPIOB
 

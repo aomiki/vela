@@ -80,7 +80,7 @@ void switch_read_sensors_flight()
 	HAL_TIM_GenerateEvent(&SENSORS_READ_TIM_HANDLE, TIM_EVENTSOURCE_UPDATE); // so the new prescaler is loaded
 	__HAL_TIM_CLEAR_FLAG(&SENSORS_READ_TIM_HANDLE, TIM_FLAG_UPDATE); // so it doesn't run right away
 
-	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 72000000);
+	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 7200000);
 
 	HAL_TIM_Base_Start_IT(&SENSORS_READ_TIM_HANDLE);
 }
@@ -338,6 +338,7 @@ void start_flight()
 void initialize_system()
 {
 	curr_sys_state = SYS_STATE_INIT;
+	HAL_Delay(120000);
 
 	// Start fan
 	HAL_GPIO_WritePin(vent_GPIO_Port, vent_Pin, GPIO_PIN_SET);

@@ -36,6 +36,7 @@
 //______________________________GPS
 
 #define GPS_UART_HANDLE huart2
+#define GPS_UART_DEF USART2
 
 //_____________________________LED
 #define LED1_PORT GPIOB

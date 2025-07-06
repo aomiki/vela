@@ -62,10 +62,10 @@ void Error_Handler(void);
 #define jumper_Pin GPIO_PIN_1
 #define jumper_GPIO_Port GPIOA
 #define jumper_EXTI_IRQn EXTI1_IRQn
-#define radio_uart_tx_Pin GPIO_PIN_2
-#define radio_uart_tx_GPIO_Port GPIOA
-#define radio_uart_rx_Pin GPIO_PIN_3
-#define radio_uart_rx_GPIO_Port GPIOA
+#define gps_uart_tx_Pin GPIO_PIN_2
+#define gps_uart_tx_GPIO_Port GPIOA
+#define gps_uart_rx_Pin GPIO_PIN_3
+#define gps_uart_rx_GPIO_Port GPIOA
 #define limit_switch_Pin GPIO_PIN_4
 #define limit_switch_GPIO_Port GPIOA
 #define SD_CS_Pin GPIO_PIN_1
@@ -82,6 +82,10 @@ void Error_Handler(void);
 #define led_radio_GPIO_Port GPIOB
 #define led_bar_Pin GPIO_PIN_8
 #define led_bar_GPIO_Port GPIOA
+#define radio_uart_tx_Pin GPIO_PIN_9
+#define radio_uart_tx_GPIO_Port GPIOA
+#define radio_uart_rx_Pin GPIO_PIN_10
+#define radio_uart_rx_GPIO_Port GPIOA
 #define radio_aux_Pin GPIO_PIN_11
 #define radio_aux_GPIO_Port GPIOA
 #define radio_m1_Pin GPIO_PIN_15

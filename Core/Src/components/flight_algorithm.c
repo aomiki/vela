@@ -8,6 +8,7 @@
 #include "radio.h"
 #include "servo.h"
 #include "adc.h"
+#include "gps.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -143,6 +144,11 @@ void read_telemetry(Telemetry* tel)
 		tel->acc_x = acc_vals[0];
 		tel->acc_y = acc_vals[1];
 		tel->acc_z = acc_vals[2];
+	}
+
+	if (enabled_peripheral & PERIPH_GPS)
+	{
+		tel->gps = *GPS_GetData();
 	}
 }
 
@@ -410,6 +416,11 @@ void initialize_system()
 		msg.priority = PRIORITY_HIGH;
 		sprintf(msg.text, "sd card failed to mount!\r\n");
 		log_message(&msg);
+	}
+
+	if(GPS_Init())
+	{
+		enabled_peripheral |= PERIPH_GPS;
 	}
 
 	//2. ACCELEROMETER

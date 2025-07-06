@@ -25,6 +25,7 @@
 #include "tim.h"
 #include "usart.h"
 #include "gpio.h"
+#include "gps.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -90,6 +91,7 @@ bool do_read_sensors = false;
 bool do_start_flight = false;
 bool is_apogy = false;
 bool is_landing = false;
+bool do_read_gps = false;
 // const uint32_t start_height = 0;
 
 /* USER CODE END 0 */
@@ -183,7 +185,12 @@ int main(void)
       landing();
       is_landing = false;
     }
-    
+
+    if (do_read_gps)
+    {
+      GPS_UART_Callback();
+      do_read_gps = false;
+    }
 
 /*
     // Таймер до приземления
@@ -290,6 +297,15 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if(huart->Instance == GPS_UART_DEF)
+    {
+      do_read_gps = true;
+    }
+}
+
 //INTERRUPT CALLBACKS
 
 /// @brief EXT = External interrupts

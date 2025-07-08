@@ -88,12 +88,10 @@ uint32_t time_off = 5000; // Время от момента приземлени
 float apogy_height = 0.0f; // Расчетная высота апогея
 
 bool do_read_sensors = false;
-bool do_start_flight = false;
-bool is_apogy = false;
 bool is_landing = false;
 bool is_buzzer = false;
 bool do_read_gps = false;
-// const uint32_t start_height = 0;
+// const uint32_t start_height = 0;;
 
 /* USER CODE END 0 */
 
@@ -158,21 +156,19 @@ int main(void)
 	while (1)
 	{
     //(1) Conditions for liftoff met - continue main algoirthm
-    if (do_start_flight)
+    if (is_liftoff())
     {
       HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
       start_flight();
       start_time = HAL_GetTick(); // Millisecond
 
-      do_start_flight = false;
       HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_RESET);
     }
 
     //(2) Conditions for apogy met - continue main algorithm
-    if (is_apogy)
+    if (is_apogy())
     {
       apogy();
-      is_apogy = false;
     }
 
     //Regular sensor read
@@ -308,10 +304,7 @@ void SystemClock_Config(void)
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-    if(huart->Instance == GPS_UART_DEF)
-    {
-      do_read_gps = true;
-    }
+    do_read_gps = true;
 }
 
 //INTERRUPT CALLBACKS
@@ -328,7 +321,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
       last_jumper_interrupt_time = current_time;
 
       if (HAL_GPIO_ReadPin(JUMPER_PORT, JUMPER_PIN)) {
-        do_start_flight = true;
+        _set_liftoff();
       }
     }
   }
@@ -358,7 +351,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
     else
     {
-      is_apogy = true;
+      _set_apogy();
     }
   }
 }

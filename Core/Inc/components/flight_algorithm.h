@@ -26,7 +26,12 @@ void open_rescue();
 bool check_rescue();
 
 // Вернёт 1, если апогей
-bool check_apogy();
+
+bool is_apogy();
+bool is_liftoff();
+void _set_apogy();
+void _set_liftoff();
+
 // Вернёт 1, если приземление
 bool check_landing();
 // Возвращает текущую высоту от уровня моря

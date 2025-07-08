@@ -27,6 +27,19 @@ static Peripheral enabled_peripheral = 0;
 static SystemState curr_sys_state = SYS_STATE_NONE;
 static float start_altitude = 0;
 
+bool _is_apogy = false;
+bool _is_liftoff = false;
+
+bool is_altitude_reducing = false;
+bool is_altitude_increasing = false;
+
+uint8_t alt_change_count = 0;
+uint8_t prev_altitude = 0;
+
+#define ALT_REDUCE_COUNT_MAX 15
+#define ALT_INCREASE_COUNT_MAX 15
+#define ALT_CMP_DELTA 0.2 //3 m
+
 SystemState get_sys_state()
 {
 	return curr_sys_state;
@@ -53,7 +66,7 @@ void switch_read_sensors_ground()
 	HAL_TIM_GenerateEvent(&SENSORS_READ_TIM_HANDLE, TIM_EVENTSOURCE_UPDATE); // so the new prescaler is loaded
 	__HAL_TIM_CLEAR_FLAG(&SENSORS_READ_TIM_HANDLE, TIM_FLAG_UPDATE); // so it doesn't run right away
 
-	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 2160000000);
+	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 720000000);
 
 	HAL_TIM_Base_Start_IT(&SENSORS_READ_TIM_HANDLE);
 }
@@ -67,7 +80,7 @@ void switch_read_sensors_standby()
 	HAL_TIM_GenerateEvent(&SENSORS_READ_TIM_HANDLE, TIM_EVENTSOURCE_UPDATE); // so the new prescaler is loaded
 	__HAL_TIM_CLEAR_FLAG(&SENSORS_READ_TIM_HANDLE, TIM_FLAG_UPDATE); // so it doesn't run right away
 
-	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 720000000);
+	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 72000000);
 
 	HAL_TIM_Base_Start_IT(&SENSORS_READ_TIM_HANDLE);
 }
@@ -81,7 +94,7 @@ void switch_read_sensors_flight()
 	HAL_TIM_GenerateEvent(&SENSORS_READ_TIM_HANDLE, TIM_EVENTSOURCE_UPDATE); // so the new prescaler is loaded
 	__HAL_TIM_CLEAR_FLAG(&SENSORS_READ_TIM_HANDLE, TIM_FLAG_UPDATE); // so it doesn't run right away
 
-	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 7200000);
+	__HAL_TIM_SET_AUTORELOAD(&SENSORS_READ_TIM_HANDLE, 3600000);
 
 	HAL_TIM_Base_Start_IT(&SENSORS_READ_TIM_HANDLE);
 }
@@ -158,12 +171,15 @@ void read_telemetry(Telemetry* tel)
 		tel->acc_x = acc_vals[0];
 		tel->acc_y = acc_vals[1];
 		tel->acc_z = acc_vals[2];
+
+		read_acceleration_angular_xyz(acc_vals);
+
+		tel->acc_angular_x = acc_vals[0];
+		tel->acc_angular_y = acc_vals[1];
+		tel->acc_angular_z = acc_vals[2];
 	}
 
-	if (enabled_peripheral & PERIPH_GPS)
-	{
-		tel->gps = *GPS_GetData();
-	}
+	tel->gps = *GPS_GetData();
 }
 
 void landing()
@@ -177,7 +193,8 @@ void landing()
 	tel.sys_state = get_sys_state();
 	log_telemetry(&tel);
 
-	switch_apogy_tim_ground_buzzer();
+	HAL_TIM_Base_Stop_IT(&APOGY_TIM_HANDLE);
+	//switch_apogy_tim_ground_buzzer();
 	switch_read_sensors_ground();
 }
 
@@ -200,7 +217,61 @@ void read_sensors()
 
 	read_telemetry(&tel);
 
+#if false
+	//Check for altitude increase/decrease
+	if (get_sys_state() == SYS_STATE_ASCENT || get_sys_state() == SYS_STATE_STANDBY)
+	{
+		float alt_diff = tel.altitude - prev_altitude;
+		if (alt_diff < -ALT_CMP_DELTA) //current altitude is less
+		{
+			if (is_altitude_increasing)
+			{
+				alt_change_count = 0;
+			}
+
+			is_altitude_increasing = false;
+			is_altitude_reducing = true;
+			alt_change_count++;
+
+			if (alt_change_count >= ALT_REDUCE_COUNT_MAX)
+			{
+				_set_apogy();
+			}
+		}
+		else if(alt_diff > ALT_CMP_DELTA) //current altitude is more
+		{
+			if (is_altitude_reducing)
+			{
+				alt_change_count = 0;
+			}
+
+			is_altitude_increasing = true;
+			is_altitude_reducing = false;
+			alt_change_count++;
+
+			if (alt_change_count >= ALT_REDUCE_COUNT_MAX)
+			{
+				_set_liftoff();
+			}
+		}
+		else //about the same
+		{
+			is_altitude_increasing = false;
+			is_altitude_reducing = false;
+			alt_change_count=0;
+		}
+	}
+#endif
+
+	prev_altitude = tel.altitude;
+
 	log_telemetry(&tel);
+
+	if (get_sys_state() == SYS_STATE_GROUND)
+	{
+		buzz();
+		HAL_Delay(5000);
+	}
 }
 
 bool check_rescue() {
@@ -215,21 +286,30 @@ bool check_rescue() {
 
 	if (difference > threshold) {
 	  // Резкое осветление
-	  return 1;
+		return 1;
 	}
+
 	previousValue = currentValue; */
 
 	return 0;
 }
 
-bool check_apogy() {
-	// Проверяем высоту (get_altitude())
-	
+bool is_apogy() {
+	return _is_apogy;
+}
 
-	// Проверяем акселерометр
+bool is_liftoff() {
+	return _is_liftoff;
+}
 
+void _set_apogy()
+{
+	_is_apogy = true;
+}
 
-	return 0;
+void _set_liftoff()
+{
+	_is_liftoff = true;
 }
 
 void open_rescue() {
@@ -250,6 +330,7 @@ bool check_landing() {
 
 void apogy()
 {
+	_is_apogy = false;
 	//9.96 seconds until apogy
 	curr_sys_state = SYS_STATE_APOGY;
 
@@ -258,7 +339,7 @@ void apogy()
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_13, GPIO_PIN_SET);
 	Message msg = { .sys_area = SYS_AREA_MAIN_ALGO, .sys_state = SYS_STATE_APOGY, .priority = PRIORITY_HIGH };
 	msg.text = malloc(256);
-	
+
 	sprintf(msg.text, "Apogy! Initiating rescue.\r\n");
 	log_message(&msg);
 
@@ -323,6 +404,7 @@ void apogy()
 
 void start_flight()
 {
+	_is_liftoff = false;
 	curr_sys_state = SYS_STATE_LIFTOFF;
 
 	switch_read_sensors_flight();
@@ -357,7 +439,7 @@ void start_flight()
 void initialize_system()
 {
 	curr_sys_state = SYS_STATE_INIT;
-	HAL_Delay(120000);
+	HAL_Delay(90000); //1.5 m
 
 	// Start fan
 	HAL_GPIO_WritePin(vent_GPIO_Port, vent_Pin, GPIO_PIN_SET);

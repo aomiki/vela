@@ -210,10 +210,10 @@ void read_sensors()
 	Telemetry tel;
 	set_default_telemetry(&tel);
 	tel.sys_area = SYS_AREA_READ_SENSORS;
-	tel.sys_status = enabled_peripheral;
 	tel.sys_state = get_sys_state();
 
 	update_enabled_peripheral(); //maybe some peripheral died / came back from the dead?
+	tel.sys_status = enabled_peripheral;
 
 	read_telemetry(&tel);
 

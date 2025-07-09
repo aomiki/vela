@@ -70,7 +70,7 @@ void Error_Handler(void);
 #define limit_switch_GPIO_Port GPIOA
 #define SD_CS_Pin GPIO_PIN_1
 #define SD_CS_GPIO_Port GPIOB
-#define vent_Pin GPIO_PIN_10
+#define vent_Pin GPIO_PIN_2
 #define vent_GPIO_Port GPIOB
 #define led_acc_Pin GPIO_PIN_12
 #define led_acc_GPIO_Port GPIOB

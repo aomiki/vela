@@ -165,7 +165,7 @@ void read_telemetry(Telemetry* tel)
 	//ACCELEROMETER
 	if (enabled_peripheral & PERIPH_ACC)
 	{
-		double acc_vals[3];
+		float acc_vals[3];
 		read_acceleration_xyz(acc_vals);
 
 		tel->acc_x = acc_vals[0];
@@ -439,7 +439,7 @@ void start_flight()
 void initialize_system()
 {
 	curr_sys_state = SYS_STATE_INIT;
-	HAL_Delay(90000); //1.5 m
+	//HAL_Delay(90000); //1.5 m
 
 	// Start fan
 	HAL_GPIO_WritePin(vent_GPIO_Port, vent_Pin, GPIO_PIN_SET);

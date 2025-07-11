@@ -439,7 +439,7 @@ void start_flight()
 void initialize_system()
 {
 	curr_sys_state = SYS_STATE_INIT;
-	//HAL_Delay(90000); //1.5 m
+	HAL_Delay(90000); //1.5 m
 
 	// Start fan
 	HAL_GPIO_WritePin(vent_GPIO_Port, vent_Pin, GPIO_PIN_SET);
